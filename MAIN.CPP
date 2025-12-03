@@ -11,6 +11,7 @@
 #define LED4 7
 #define POT 8
 #define BOOT 0
+#define POT_B 9
 #define SAMPFREQ                1000
 #define CONVERSIONS_PER_MEASURE 100
 
@@ -19,6 +20,7 @@ bool led2State = false;
 bool led3State = false;
 bool led4State = false;
 bool BootState = false;
+bool PotState = true;
 
 uint8_t adc_pins[]            = {8}; 
 adc_continuous_data_t *result = NULL; 
@@ -27,11 +29,23 @@ hw_timer_t * timer = NULL;
 
 volatile bool flag_conversion_done = false;
 volatile bool flag_Boot_pressed = false;
+volatile bool flag_Pot_pressed = false;
 volatile int lastBootPress=0;
+volatile int lastPotPress=0;
 int duty = 0; 
 
 void IRAM_ATTR Boot_Isr() {
-  flag_Boot_pressed = true;         // marcar evento
+  if(millis() - lastBootPress > 1000){
+    lastBootPress=millis();
+    flag_Boot_pressed = true;         // marcar evento
+  }
+}
+
+void IRAM_ATTR Pot_Isr() {
+  if(millis() - lastPotPress > 1000){
+    lastPotPress=millis();
+    flag_Pot_pressed = true;         // marcar evento
+  }
 }
 
 void ARDUINO_ISR_ATTR myISR_ADC ()
@@ -93,6 +107,8 @@ void setup() {
   Serial.begin(115200);
   pinMode(BOOT, INPUT_PULLUP);
   attachInterrupt(BOOT, Boot_Isr, FALLING);
+  pinMode(POT_B, INPUT_PULLUP);
+  attachInterrupt(POT_B, Pot_Isr, FALLING);
 
   ledcAttach(LED1, 1000, 12);
   ledcWrite(LED1, 0);
@@ -165,24 +181,40 @@ void setup() {
 void loop() {
   server.handleClient();
   if(!BootState){
-    if (flag_conversion_done) {
-      flag_conversion_done = false;
-      if(analogContinuousRead(&result, 0)){
-        int raw_ADC = result[0].avg_read_raw;
-        if(led1State){
-          ledcWrite(LED1, raw_ADC);
-        }
-        if(led2State){
-          ledcWrite(LED2, raw_ADC);
-        }
-        if(led3State){
-          ledcWrite(LED3, raw_ADC);
-        }
-        if(led4State){
-          ledcWrite(LED4, raw_ADC);
+    if(PotState){
+      if (flag_conversion_done) {
+        flag_conversion_done = false;
+        if(analogContinuousRead(&result, 0)){
+          int raw_ADC = result[0].avg_read_raw;
+          if(led1State){
+            ledcWrite(LED1, raw_ADC);
+          }
+          if(led2State){
+            ledcWrite(LED2, raw_ADC);
+          }
+          if(led3State){
+            ledcWrite(LED3, raw_ADC);
+          }
+          if(led4State){
+            ledcWrite(LED4, raw_ADC);
+          }
         }
       }
+    }else{
+      if(led1State){
+        ledcWrite(LED1, 4095);
+      }
+      if(led2State){
+        ledcWrite(LED2, 4095);
+      }
+      if(led3State){
+        ledcWrite(LED3, 4095);
+      }
+      if(led4State){
+        ledcWrite(LED4, 4095);
+      }
     }
+
   }else{
     ledcWrite(LED1, 0);
     ledcWrite(LED2, 0);
@@ -190,11 +222,14 @@ void loop() {
     ledcWrite(LED4, 0);
   }
   if (flag_Boot_pressed) {
-    if(millis() - lastBootPress > 1000){
-      lastBootPress=millis();
-      flag_Boot_pressed = false;
-      BootState=!BootState;
-    }
+
+    flag_Boot_pressed = false;
+    BootState=!BootState;
+  }
+  if (flag_Pot_pressed) {
+
+    flag_Pot_pressed = false;
+    PotState=!PotState;
   }
 
   delay(10);
